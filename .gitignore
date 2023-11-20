@@ -5,9 +5,8 @@
 **/out/
 **/.vscode/
 **/Dartboard
-**/negatives
 **/Dartboardcascade
-
+**/negatives
 
 # Compiled Object files
 *.slo
