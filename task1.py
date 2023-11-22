@@ -15,8 +15,18 @@ import copy
 # LOADING THE IMAGE
 # Example usage: python filter2d.py -n car1.png
 parser = argparse.ArgumentParser(description='dart detection')
-parser.add_argument('-name', '-n', type=str, default='Dartboard/dart14.jpg')
+# Updated to accept multiple filenames
+parser.add_argument('-names', nargs='+', default=['Dartboard/dart0.jpg','Dartboard/dart1.jpg','Dartboard/dart2.jpg',
+                                                  'Dartboard/dart3.jpg','Dartboard/dart4.jpg','Dartboard/dart5.jpg',
+                                                'Dartboard/dart6.jpg','Dartboard/dart7.jpg','Dartboard/dart8.jpg',
+                                                'Dartboard/dart9.jpg','Dartboard/dart10.jpg','Dartboard/dart11.jpg','Dartboard/dart12.jpg',
+                                                'Dartboard/dart13.jpg','Dartboard/dart14.jpg','Dartboard/dart15.jpg'])
 args = parser.parse_args()
+
+# Global variables
+cascade_name = "Dartboardcascade/cascade.xml"
+model = cv2.CascadeClassifier(cascade_name)
+
 
 # /** Global variables */
 cascade_name = "Dartboardcascade/cascade.xml"
@@ -29,7 +39,7 @@ def detectAndDisplay(frame):
     frame_gray = cv2.equalizeHist(frame_gray)
     # 2. Perform Viola-Jones Object Detection
 
-    dartboards = model.detectMultiScale(frame_gray, scaleFactor=1.05, minNeighbors=20, flags=0, minSize=(80,80), maxSize=(250,250)).tolist()
+    dartboards = model.detectMultiScale(frame_gray, scaleFactor=1.008, minNeighbors=25, flags=0, minSize=(50,50), maxSize=(300,300)).tolist()
 
     # 3. Print number of dartboards found
     print(len(dartboards))
@@ -43,22 +53,22 @@ def detectAndDisplay(frame):
         thickness = 2
         frame = cv2.rectangle(frame, start_point, end_point, colour, thickness)
 
-    # current_image_name = os.path.splitext(imageName.split('/')[-1])[0]
-    #
-    # #Draw groundtruth
-    # groundtruth = readGroundtruth()
-    # for img_name in groundtruth:
-    #     if img_name == current_image_name:
-    #         for bbox in groundtruth[img_name]:
-    #             start_point = (bbox[0], bbox[1])
-    #             end_point = (bbox[0] + bbox[2], bbox[1] + bbox[3])
-    #             colour = (0, 0, 255)
-    #             thickness = 2
-    #             frame = cv2.rectangle(frame, start_point, end_point, colour, thickness)
-    #
-    # TPR, F1 = evaluate_predictions(dartboards, groundtruth[current_image_name])
-    # print("TPR: ", TPR)
-    # print("F1: ", F1)
+    current_image_name = os.path.splitext(imageName.split('/')[-1])[0]
+
+    #Draw groundtruth
+    groundtruth = readGroundtruth()
+    for img_name in groundtruth:
+        if img_name == current_image_name:
+            for bbox in groundtruth[img_name]:
+                start_point = (bbox[0], bbox[1])
+                end_point = (bbox[0] + bbox[2], bbox[1] + bbox[3])
+                colour = (0, 0, 255)
+                thickness = 2
+                frame = cv2.rectangle(frame, start_point, end_point, colour, thickness)
+
+    TPR, F1 = evaluate_predictions(dartboards, groundtruth[current_image_name])
+    print("TPR: ", TPR)
+    print("F1: ", F1)
 
 
 def computeIoU(box1, box2):
@@ -85,7 +95,7 @@ def computeIoU(box1, box2):
     return iou
 
 
-def evaluate_predictions(predictions, ground_truths, iou_threshold=0.5):
+def evaluate_predictions(predictions, ground_truths, iou_threshold=0.2):
     predictions_copy = copy.deepcopy(predictions)
 
     # TP 是人脸，预测也是人脸
@@ -96,7 +106,7 @@ def evaluate_predictions(predictions, ground_truths, iou_threshold=0.5):
     FN = 0
 
     # For each ground truth, find the best matching prediction
-    # 对每个ground truth，找到最匹配的prediction
+    # 对每个ground truth，找到最匹配的prediction,这样就可以防止一个ground truth里面有多个prediction匹配到它，造成TP非常多
     for gt in ground_truths:
         best_iou = 0
         best_pred_index = -1
@@ -158,39 +168,30 @@ def readGroundtruth(filename='groundtruth.txt'):
     return groundtruth
 
 
-# ==== MAIN ==============================================
+for imageName in args.names:
+    # Check if the image and cascade files are present
+    if not os.path.isfile(imageName) or not model.load(cascade_name):
+        print('File not found:', imageName)
+        continue  # Skip this image and continue with the next one
 
-imageName = args.name
+    # Read and process the image
+    frame = cv2.imread(imageName, 1)
+    if frame is None:
+        print('Failed to load image:', imageName)
+        continue
 
-# ignore if no such file is present.
-if (not os.path.isfile(imageName)) or (not os.path.isfile(cascade_name)):
-    print('No such file')
-    sys.exit(1)
+    # Detect dartboards and display results
+    detectAndDisplay(frame)
 
-# 1. Read Input Image
-frame = cv2.imread(imageName, 1)
+    # Construct the new image name and save it in the task1output directory
+    output_dir = 'task1output'
+    os.makedirs(output_dir, exist_ok=True)  # Ensure the directory exists
+    base_filename = os.path.basename(imageName)
+    new_image_name = os.path.splitext(base_filename)[0] + '_detected.jpg'
+    output_path = os.path.join(output_dir, new_image_name)
 
-# ignore if image is not array.
-if not (type(frame) is np.ndarray):
-    print('Not image data')
-    sys.exit(1)
+    cv2.imwrite(output_path, frame)
+    print('Image saved:', output_path)
 
-
-# 2. Load the Strong Classifier in a structure called `Cascade'
-model = cv2.CascadeClassifier()
-if not model.load(cascade_name): # you might need only `if not model.load(cascade_name):` (remove cv2.samples.findFile)
-    print('--(!)Error loading cascade model')
-    exit(0)
-
-
-# 3. Detect Faces and Display Result
-detectAndDisplay( frame )
-
-# 4. Draw groundtruth
-groundtruth = readGroundtruth()
-
-
-# 5. Save Result Image
-cv2.imwrite( "detected.jpg", frame )
 
 
