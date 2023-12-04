@@ -6,17 +6,22 @@ import argparse
 import copy
 import time
 
+# global variable for calculating the sum of the F1 score
+totalF1 = 0
 
 
-# 这个里面没有霍夫直线检测
-
+# if box1 is inside box2, return True, else return False
 def is_inside(box1, box2):
-    # 如果box1在box2内部，返回True
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
 
     return x1 >= x2 and y1 >= y2 and x1 + w1 <= x2 + w2 and y1 + h1 <= y2 + h2
 
+# this function is used in sobelEdgeDetect function
+# it receives the magnitude and direction of the gradient
+# and return the non-maximum suppression magnitude result
+# this function retains only one point when gradients are similar in proximity.
+# This method sharpens edges, avoids thick borders, and reduces unnecessary points, thus speeding up the process
 def non_maximum_suppression(gradient_magnitude, gradient_direction):
     M, N = gradient_magnitude.shape
     non_max = np.zeros((M, N), dtype=np.float32)
@@ -52,7 +57,10 @@ def non_maximum_suppression(gradient_magnitude, gradient_direction):
                 pass
     return non_max
 
-
+# this function is used before hough transformation
+# it receives the magnitude of the image and return the double thresholding magnitude result
+# this Hysteresis thresholding(double thresholding) to the magnitude will
+# clearly distinguish between strong and weak edges, retaining only the strong ones.
 def double_thresholding(img, low_ratio=0.5, high_ratio=0.06):
     high_threshold = img.max() * high_ratio
     low_threshold = high_threshold * low_ratio
@@ -70,7 +78,7 @@ def double_thresholding(img, low_ratio=0.5, high_ratio=0.06):
 
     return result
 
-
+# this function will output the magnitude(after NMS) of the image
 def sobelEdgeDetect(img, img_name):
     # 1. Convert the image to grayscale
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -86,26 +94,21 @@ def sobelEdgeDetect(img, img_name):
     DerivativeY = cv2.Sobel(AfterBlur, cv2.CV_64F, 0, 1, ksize=3)
     # cv2.imwrite("DerivativeY.jpg", np.clip(DerivativeY + 128, 0, 255))
 
-    # 6.
     Direction = np.arctan2(DerivativeY, DerivativeX)
 
     # 5. calculate gradient magnitude
     Magnitude = np.sqrt(DerivativeX ** 2 + DerivativeY ** 2)
     normalized_magnitude = (Magnitude / np.max(Magnitude) * 255).astype(np.uint8)
     normalized_magnitude = non_maximum_suppression(normalized_magnitude, Direction)
-    normalized_magnitude = double_thresholding(normalized_magnitude)
     cv2.imwrite(f"task2output/magnitude/Magnitude_{img_name}.jpg", normalized_magnitude)
 
 
-def threshold_image(image, threshold):
-    _, threshed = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY)
-    return threshed
-
-
+# this function receives a threshold image, direction image of this threshold image, and the min and max radius
+# it will return the hough space of the image
 def houghTransformation(thresholdImg, DirectionImg, min_radius, max_radius):
     width = thresholdImg.shape[1]
     height = thresholdImg.shape[0]
-    # 因为圆心坐标一定在height和width范围内
+    # the center of the circle must be within the range of height and width
     hough_space = np.zeros((height, width, max_radius + 1))
     for y in range(height):
         for x in range(width):
@@ -122,7 +125,8 @@ def houghTransformation(thresholdImg, DirectionImg, min_radius, max_radius):
                         hough_space[b, a, r] += 1
     return hough_space
 
-
+# receive the hough space and the thresholdH, return the parameter of the circle
+# the accumulation parameter below the thresholdH will be ignored
 def find_parameter(hough_space, thresholdH):
     width = hough_space.shape[1]
     height = hough_space.shape[0]
@@ -136,51 +140,10 @@ def find_parameter(hough_space, thresholdH):
     return parameter
 
 
-# def filter_largest_circles(parameters, center_error=40, radius_error=10):
-#     # 使用字典来按圆心分组圆
-#     circles_by_center = {}
-#     for y, x, r in parameters:
-#         # 查找已有圆心是否存在
-#         found = False
-#         for (cy, cx), (cr, _) in circles_by_center.items():
-#             if ((cy - y) ** 2 + (cx - x) ** 2) ** 0.5 <= center_error:
-#                 found = True
-#                 # 如果当前圆的半径比已记录的圆更大，则更新
-#                 if r > cr and abs(r - cr) > radius_error:
-#                     circles_by_center[(cy, cx)] = (r, (y, x, r))
-#                 break
-#         if not found:
-#             circles_by_center[(y, x)] = (r, (y, x, r))
-#
-#     # 只保留每组中半径最大的圆
-#     return [info[1] for info in circles_by_center.values()]
-
-
-# def filter_similar_circles(parameters, center_threshold=50, radius_threshold=120):
-#     # Sort circles by radius in descending order
-#     parameters.sort(key=lambda x: x[2], reverse=True)
-#
-#     filtered_params = []
-#
-#     for current_circle in parameters:
-#         is_similar = False
-#         for saved_circle in filtered_params:
-#             center_distance = ((current_circle[0] - saved_circle[0]) ** 2 +
-#                                (current_circle[1] - saved_circle[1]) ** 2) ** 0.5
-#             radius_diff = abs(current_circle[2] - saved_circle[2])
-#
-#             if center_distance < center_threshold and radius_diff < radius_threshold:
-#                 is_similar = True
-#                 # No need to replace since we are already iterating from largest to smallest
-#                 break
-#
-#         if not is_similar:
-#             filtered_params.append(current_circle)
-#
-#     return filtered_params
-
+# this function takes the parameter of the circle, the bounding box of the circle, and the threshold of IOU
+# it will return the filtered parameter of the circle
 def filter_similar_circles(parameters, result1_rectangle_for_circle, iou_threshold=0.1):
-    # Sort circles by radius in descending order
+    # Sort circles by radius in descending order, because we want to keep the larger circles
     parameters.sort(key=lambda x: x[2], reverse=True)
 
     filtered_params = []
@@ -200,52 +163,43 @@ def filter_similar_circles(parameters, result1_rectangle_for_circle, iou_thresho
             radius_diff = abs(current_circle[2] - saved_circle[2])
 
             # Check IOU and also ensure that the smaller circle is not completely inside the larger one
-            if iou > iou_threshold or (center_distance < radius_diff and current_circle[2] < saved_circle[2]):
+            if iou > iou_threshold or (center_distance < radius_diff+5 and current_circle[2] < saved_circle[2]+5):
                 is_similar = True
                 break
-
+        # if the circle is not similar to any of the saved circle, then add it to the filtered parameter
         if not is_similar:
             filtered_params.append(current_circle)
 
     return filtered_params
-# def draw_circle(image, parameters):
-#     parameters = filter_similar_circles(parameters)
-#     for param in parameters:
-#         cv2.circle(image, (param[1], param[0]), param[2], (0, 255, 255), 2)
-#     return image
 
 
-# def detect_dartboard(hough_space, thresholdH):
-#     # 找到可能的圆
-#     potential_circles = find_parameter(hough_space, thresholdH)
-#     # 过滤相似的圆
-#     # potential_circles = filter_similar_circles(potential_circles)
-#     # potential_circles = filter_largest_circles(potential_circles)
-#
-#     return potential_circles
-
-
+# this is the crucial function of task 2, this function combined the viola-jones detection and hough transformation
+# only the last parameter is for the hough transformation, it is the threshold of the hough space
+# the other parameters are for viola-jones detection
 def detect_dartboards_with_hough(frame, model, img_name, scaleFactor=1.008, minNeighbors=25, flags=0, minSize=(50, 50),
                                  maxSize=(300, 300), thresholdH=6):
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     frame_gray = cv2.equalizeHist(frame_gray)
 
-    # Viola-Jones检测
+    # Viola-Jones detection
     VioJonResult = model.detectMultiScale(frame_gray, scaleFactor=scaleFactor, minNeighbors=minNeighbors, flags=flags,
                                           minSize=minSize, maxSize=maxSize).tolist()
     VioJonResult = non_maximum_suppressionForViola(VioJonResult, 0.2)
 
     print(f"Detected {len(VioJonResult)} VioJonResult")
 
-    # for i in range(0, len(VioJonResult)):
-    #     start_point = (VioJonResult[i][0], VioJonResult[i][1])
-    #     # VioJonResult[i][0] + VioJonResult[i][2] = x+ width
-    #     end_point = (VioJonResult[i][0] + VioJonResult[i][2], VioJonResult[i][1] + VioJonResult[i][3])
-    #     colour = (0, 255, 0)
-    #     # the thickness of the line
-    #     thickness = 2
-    #     frame = cv2.rectangle(frame, start_point, end_point, colour, thickness)
+    # draw the viola-jones detection on the image(this can be commented out)
+    # this part can be commented out because I only use the hough detection result as the final result
+    for i in range(0, len(VioJonResult)):
+        start_point = (VioJonResult[i][0], VioJonResult[i][1])
+        # VioJonResult[i][0] + VioJonResult[i][2] = x+ width
+        end_point = (VioJonResult[i][0] + VioJonResult[i][2], VioJonResult[i][1] + VioJonResult[i][3])
+        colour = (0, 255, 0)
+        # the thickness of the line
+        thickness = 2
+        frame = cv2.rectangle(frame, start_point, end_point, colour, thickness)
 
+    # draw the groundtruth on the image
     current_image_name = os.path.splitext(image_file.split('/')[-1])[0]
     groundtruth = readGroundtruth()
     for img_name_truth in groundtruth:
@@ -257,61 +211,59 @@ def detect_dartboards_with_hough(frame, model, img_name, scaleFactor=1.008, minN
                 thickness = 2
                 frame = cv2.rectangle(frame, start_point, end_point, colour, thickness)
 
-    # 霍夫变换
+    # get the preprocessing image for hough transformation
     AfterBlur = cv2.GaussianBlur(frame_gray, (7, 7), 0)
     DerivativeX = cv2.Sobel(AfterBlur, cv2.CV_64F, 1, 0, ksize=3)
     DerivativeY = cv2.Sobel(AfterBlur, cv2.CV_64F, 0, 1, ksize=3)
     Direction = np.arctan2(DerivativeY, DerivativeX)
     cv2.imwrite(f"task2output/threshold/threshold_{img_name}.jpg",
-                threshold_image(cv2.imread(f"task2output/magnitude/Magnitude_{img_name}.jpg", cv2.IMREAD_GRAYSCALE),
+                double_thresholding(cv2.imread(f"task2output/magnitude/Magnitude_{img_name}.jpg", cv2.IMREAD_GRAYSCALE),
                                 50))
 
     thresholdImgWhole = cv2.imread(f"task2output/threshold/threshold_{img_name}.jpg", cv2.IMREAD_GRAYSCALE)
-    rectangle_for_circle = []
     total_dartboard_circles = []
-    # 设定扩展大小,我希望在比每个viola-johns框稍微大一点的区域内做霍夫变换
-    expand_size = 16  # 您可以根据需要调整这个值
-    # 对于每个检测到的飞镖盘，执行霍夫变换来找圆
+    # expand size, I want to do the hough transformation in the area that is slightly larger than the viola-jones box
+    expand_size = 16
+    # for each viola-jones detected box, do the hough transformation to find the circle
     for (x, y, w, h) in VioJonResult:
-        # 计算新的裁剪坐标，确保坐标不超出图像边界
+        # calculate the new coordinate of the cropped image, make sure it is not out of the image
         x_start = max(x - expand_size, 0)
         y_start = max(y - expand_size, 0)
         x_end = min(x + w + expand_size, frame_gray.shape[1])
         y_end = min(y + h + expand_size, frame_gray.shape[0])
+        # create the cropped threshold image and direction image
         thresholdImg = thresholdImgWhole[y_start:y_end, x_start:x_end]
         Direction_cropped = Direction[y_start:y_end, x_start:x_end]
 
-        # 应用霍夫变换
+        # apply hough transformation on the cropped image
         hough_space = houghTransformation(thresholdImg, Direction_cropped, 10, 200)
+        # out put the hough space image
+        # the reason I comment this is that this hough_space_img is just a part of the whole image
+        # because I only do hough transformation on the cropped image(only the detected area)
+        # hough_space_img = np.sum(hough_space, axis=2)
+        # hough_space_img = hough_space_img.astype(np.uint8)
+        # cv2.imwrite(f"task2output/hough_2D_img/hough_space_{img_name}_{x}_{y}.jpg", hough_space_img)
 
-        # 从霍夫空间中找到可能的圆
+
+        # get the parameter of the circle from the hough space
         dartboard_circles = find_parameter(hough_space, thresholdH)
         for board in dartboard_circles:
-            # 调整圆的坐标，以对应到原图的全局坐标
+            # adjust the coordinate of the circle to the global coordinate
             total_dartboard_circles.append((board[0] + y_start, board[1] + x_start, board[2]))
 
-        # 裁剪检测区域
-        # thresholdImg = thresholdImgWhole[y:y + h, x:x + w]
-        # # 应用霍夫变换
-        # hough_space = houghTransformation(thresholdImg, Direction[y:y + h, x:x + w], 10, 200)
-        # # 从霍夫空间中找到可能的圆
-        # dartboard_circles = find_parameter(hough_space, thresholdH)
-        # for board in dartboard_circles:
-        #     # 这个地方要变成全局坐标
-        #     total_dartboard_circles.append((board[0] + y, board[1] + x, board[2]))
-
-    # 我发现不加这一句效果更好，原因其实就是我直接过滤大的圆，可能会导致真正在框中很多的圆被过滤掉
-    # total_dartboard_circles = filter_similar_circles(total_dartboard_circles)
     circle1 = []
     rectangle_for_circle = []
     rectangle_for_circle_copy = []
+    # for each circle, build a rectangle bounding box for it
+    # in order to calculate the IOU
     for board in total_dartboard_circles:
-        # 把每个圆做成一个precision方框，以用来计算
         top_left_x = board[1] - board[2]
         top_left_y = board[0] - board[2]
         width_height = 2 * board[2]
         rectangle_for_circle.append((top_left_x, top_left_y, width_height, width_height))
-    # 我还可以对每个viola-jones区域都只保留一个最大的圆,计算圆和viola方框的IOU
+
+    # Filter 1:
+    # for each viola-jones detected box, find the circle that has the largest IOU with it
     for Board in VioJonResult:
         best_iou = 0
         best_pred_index = -1
@@ -321,13 +273,15 @@ def detect_dartboards_with_hough(frame, model, img_name, scaleFactor=1.008, minN
                 best_iou = iou
                 best_pred_index = i
         if best_iou > 0.3:
-            # 可以理解为这两个下标是共享的
+            # can be understood as these two indexes are shared
             rectangle_for_circle_copy.append(rectangle_for_circle[best_pred_index])
             circle1.append(total_dartboard_circles[best_pred_index])
 
-    # 这里对圆做一次过滤，根据IOU和禁止大圆套小圆
+    # Filter 2:
+    # here I filter the circle again, based on the IOU and the rule that a big circle cannot contain a small circle
     result_circle = filter_similar_circles(circle1, rectangle_for_circle_copy)
 
+    # create the final rectangle bounding boxes for the rest of circle
     result_rectangle_for_circle = []
     for board in result_circle:
         cv2.circle(frame, (board[1], board[0]), board[2], (0, 255, 255), 2)
@@ -339,28 +293,31 @@ def detect_dartboards_with_hough(frame, model, img_name, scaleFactor=1.008, minN
     TPR, F1 = evaluate_predictions(result_rectangle_for_circle, groundtruth[current_image_name])
     print("TPR: ", TPR)
     print("F1: ", F1)
-    # 返回带有标记圆的图像
+    global totalF1
+    totalF1 += F1
     with open(f"task2output/evaluation_results.txt", 'a') as file:
         file.write(f"TPR: {TPR}\n")
         file.write(f"F1: {F1}\n")
     return frame
 
-
+# this function is used after the viola-jones detection
+# it is using NMS to filter the similar bounding boxes
 def non_maximum_suppressionForViola(boxes, iou_threshold):
-    # 按面积对边界框进行降序排序
+    # according to the area of the box, sort the box in descending order
     boxes = sorted(boxes, key=lambda x: x[2] * x[3], reverse=True)
 
-    # 初始化最终的边界框列表
+    # initialize the final box list
     final_boxes = []
 
-    # 遍历每个边界框
+    # go through each viola-jones box
     for current_box in boxes:
-        # 对于列表中的第一个边界框（即面积最大的），直接添加到最终列表中
+        # add the first box(the largest one) to the final box list
         if not final_boxes:
             final_boxes.append(current_box)
             continue
 
-        # 计算当前边界框与最终列表中每个边界框的IoU，并确保IoU都小于阈值
+        # calculate the IoU between the current box and each box in the final box list,
+        # make sure the IoU is smaller than the threshold
         keep_current_box = True
         for final_box in final_boxes:
             if is_inside(current_box, final_box):
@@ -371,7 +328,8 @@ def non_maximum_suppressionForViola(boxes, iou_threshold):
                 keep_current_box = False
                 break
 
-        # 如果当前边界框的IoU都小于阈值，则将其添加到最终列表中
+        # if the IoU between the current box and each box is smaller than the threshold,
+        # add the current box to the final box list
         if keep_current_box:
             final_boxes.append(current_box)
 
@@ -404,20 +362,19 @@ def computeIoU(box1, box2):
 def evaluate_predictions(predictions, ground_truths, iou_threshold=0.15):
     predictions_copy = copy.deepcopy(predictions)
 
-    # TP 是人脸，预测也是人脸
     TP = 0
-    # FP 不是人脸，预测是人脸 假阳
+
     FP = 0
-    # FN 是人脸，预测不是人脸 假阴
+
     FN = 0
 
     # For each ground truth, find the best matching prediction
-    # 对每个ground truth，找到最匹配的prediction,这样就可以防止一个ground truth里面有多个prediction匹配到它，造成TP非常多
     for gt in ground_truths:
         best_iou = 0
         best_pred_index = -1
         isInside = False
-        # 遍历prediction，找到和当前ground truth最匹配的prediction，也就是IOU最大的prediction
+        # go through each prediction,
+        # find the best matching prediction for the current ground truth (the one with the highest IOU)
         for i, pred in enumerate(predictions_copy):
             if is_inside(gt, pred):
                 isInside = True
@@ -429,17 +386,14 @@ def evaluate_predictions(predictions, ground_truths, iou_threshold=0.15):
                 best_pred_index = i
 
         # If the best matching prediction has IOU > threshold, it's a TP. Otherwise, it's a FN.
-        # 找到了这个ground truth对应的最好的prediction以后，然后再判断他们的IOU是否大于阈值，如果大于阈值，就是TP，否则就是FN
         if best_iou > iou_threshold or isInside:
             TP += 1
             # Remove this prediction from further consideration
-            # 匹配成功了，就把这个prediction从predictions里面移除，因为一个prediction只能匹配一个ground truth
             predictions_copy.pop(best_pred_index)
         else:
             FN += 1
 
     # Any remaining predictions are FP
-    # 这些都不是人脸
     FP = len(predictions_copy)
 
     # Calculate TPR (true positive rate)
@@ -455,7 +409,6 @@ def evaluate_predictions(predictions, ground_truths, iou_threshold=0.15):
     return TPR, F1
 
 
-# ************ NEED MODIFICATION ************
 def readGroundtruth(filename='groundtruth.txt'):
     groundtruth = {}
     # read bounding boxes as ground truth
@@ -478,46 +431,60 @@ def readGroundtruth(filename='groundtruth.txt'):
 
     return groundtruth
 
+
+
+# calculate the time taken for the program to run
 start_time = time.time()
+
 if os.path.exists("task2output/evaluation_results.txt"):
     # If it does, delete the file
     os.remove("task2output/evaluation_results.txt")
 
-#
-image_files = [f"Dartboard/dart{i}.jpg" for i in range(16)]  # 生成包含dart0.jpg到dart4.jpg的列表
+# get the input file names default value is all the images in the Dartboard folder
+parser = argparse.ArgumentParser(description='dart detection')
+parser.add_argument('-names', nargs='+', default=['Dartboard/dart0.jpg','Dartboard/dart1.jpg','Dartboard/dart2.jpg',
+                                                'Dartboard/dart3.jpg','Dartboard/dart4.jpg','Dartboard/dart5.jpg',
+                                                'Dartboard/dart6.jpg','Dartboard/dart7.jpg','Dartboard/dart8.jpg',
+                                                'Dartboard/dart9.jpg','Dartboard/dart10.jpg','Dartboard/dart11.jpg',
+                                                'Dartboard/dart12.jpg','Dartboard/dart13.jpg','Dartboard/dart14.jpg',
+                                                'Dartboard/dart15.jpg'])
+args = parser.parse_args()
 
-# image_files = [f"Dartboard/dart10.jpg"]  # 生成包含dart0.jpg到dart4.jpg的列表
+for image_file in args.names:
 
-for image_file in image_files:
-    # 提取文件名（不含扩展名）作为后续保存文件的一部分
+    # extract the file name (without the extension) as part of the file name to save later
     image_name = os.path.splitext(os.path.basename(image_file))[0]
 
-    # 检查文件是否存在
+    # check if the file exists
     if not os.path.isfile(image_file):
         print(f'No such file: {image_file}')
         continue
 
-    # 读取图片
+    # read the image
     frame = cv2.imread(image_file, 1)
     if not (type(frame) is np.ndarray):
         print(f'Not image data: {image_file}')
         continue
 
-    # 加载Viola-Jones模型
+    # load the Viola-Jones model
     cascade_name = "Dartboardcascade/cascade.xml"
     model = cv2.CascadeClassifier()
     if not model.load(cascade_name):
         print('--(!)Error loading cascade model')
         continue
 
-    # 执行边缘检测并保存结果
-    sobelEdgeDetect(frame, image_name)  # 如果这个函数内部保存了结果，确保它使用image_name来命名输出文件
+    # doing edge detection and save the result
+    sobelEdgeDetect(frame, image_name)
 
-    # 执行Viola-Jones和霍夫变换
+    # detect dartboards using Viola-Jones and Hough Transform
     result_image = detect_dartboards_with_hough(frame, model, image_name)
 
-    # 保存检测结果图像时，包含图片的编号
+    # save the result image
     cv2.imwrite(f"task2output/detected_{image_name}.jpg", result_image)
+
+with open("task2output/evaluation_results.txt", 'a') as file:
+    averageF1 = totalF1 / len(args.names)
+    file.write(f"AvgF1: {averageF1}\n")
 
 end_time = time.time()
 runtime = end_time - start_time

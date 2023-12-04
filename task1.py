@@ -11,16 +11,21 @@ import os
 import sys
 import argparse
 import copy
+import time
 
 # LOADING THE IMAGE
 # Example usage: python filter2d.py -n car1.png
+
+totalF1 = 0
+
 parser = argparse.ArgumentParser(description='dart detection')
 # Updated to accept multiple filenames
 parser.add_argument('-names', nargs='+', default=['Dartboard/dart0.jpg','Dartboard/dart1.jpg','Dartboard/dart2.jpg',
-                                                  'Dartboard/dart3.jpg','Dartboard/dart4.jpg','Dartboard/dart5.jpg',
+                                                'Dartboard/dart3.jpg','Dartboard/dart4.jpg','Dartboard/dart5.jpg',
                                                 'Dartboard/dart6.jpg','Dartboard/dart7.jpg','Dartboard/dart8.jpg',
-                                                'Dartboard/dart9.jpg','Dartboard/dart10.jpg','Dartboard/dart11.jpg','Dartboard/dart12.jpg',
-                                                'Dartboard/dart13.jpg','Dartboard/dart14.jpg','Dartboard/dart15.jpg'])
+                                                'Dartboard/dart9.jpg','Dartboard/dart10.jpg','Dartboard/dart11.jpg',
+                                                'Dartboard/dart12.jpg','Dartboard/dart13.jpg','Dartboard/dart14.jpg',
+                                                'Dartboard/dart15.jpg'])
 args = parser.parse_args()
 
 # Global variables
@@ -34,11 +39,11 @@ cascade_name = "Dartboardcascade/cascade.xml"
 
 def detectAndDisplay(frame):
 
-	# 1. Prepare Image by turning it into Grayscale and normalising lighting
+    # 1. Prepare Image by turning it into Grayscale and normalising lighting
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     frame_gray = cv2.equalizeHist(frame_gray)
-    # 2. Perform Viola-Jones Object Detection
 
+    # 2. Perform Viola-Jones Object Detection
     dartboards = model.detectMultiScale(frame_gray, scaleFactor=1.008, minNeighbors=25, flags=0, minSize=(50,50), maxSize=(300,300)).tolist()
 
     # 3. Print number of dartboards found
@@ -69,6 +74,12 @@ def detectAndDisplay(frame):
     TPR, F1 = evaluate_predictions(dartboards, groundtruth[current_image_name])
     print("TPR: ", TPR)
     print("F1: ", F1)
+    # calculate the total F1 score in order to print the average F1 score at the end
+    global totalF1
+    totalF1 += F1
+    with open(f"task1output/evaluation_results.txt", 'a') as file:
+        file.write(f"TPR: {TPR}\n")
+        file.write(f"F1: {F1}\n")
 
 
 def computeIoU(box1, box2):
@@ -95,22 +106,24 @@ def computeIoU(box1, box2):
     return iou
 
 
-def evaluate_predictions(predictions, ground_truths, iou_threshold=0.2):
+# this function will compare the predictions with the ground truths and calculate the TPR and F1 score
+def evaluate_predictions(predictions, ground_truths, iou_threshold=0.15):
     predictions_copy = copy.deepcopy(predictions)
 
-    # TP 是人脸，预测也是人脸
+    # TP: is a face, and is predicted as a face
     TP = 0
-    # FP 不是人脸，预测是人脸 假阳
+    # FP: is not a face, but is predicted as a face
     FP = 0
-    # FN 是人脸，预测不是人脸 假阴
+    # FN: is a face, but is not predicted as a face
     FN = 0
 
-    # For each ground truth, find the best matching prediction
-    # 对每个ground truth，找到最匹配的prediction,这样就可以防止一个ground truth里面有多个prediction匹配到它，造成TP非常多
+    # for each ground truth, find the best matching prediction,
+    # so that we don't have multiple predictions matching to the same ground truth
     for gt in ground_truths:
         best_iou = 0
         best_pred_index = -1
-        # 遍历prediction，找到和当前ground truth最匹配的prediction，也就是IOU最大的prediction
+        # go through all the predictions and find the best matching prediction for the current ground truth
+        # the best matching prediction is the one with the highest IOU
         for i, pred in enumerate(predictions_copy):
             iou = computeIoU(gt, pred)
             if iou > best_iou:
@@ -118,17 +131,19 @@ def evaluate_predictions(predictions, ground_truths, iou_threshold=0.2):
                 best_pred_index = i
 
         # If the best matching prediction has IOU > threshold, it's a TP. Otherwise, it's a FN.
-        # 找到了这个ground truth对应的最好的prediction以后，然后再判断他们的IOU是否大于阈值，如果大于阈值，就是TP，否则就是FN
+        # after finding the best matching prediction for the current ground truth,
+        # we check if the IOU is greater than the threshold, if it is, then it's a TP, otherwise it's a FN
         if best_iou > iou_threshold:
             TP += 1
             # Remove this prediction from further consideration
-            # 匹配成功了，就把这个prediction从predictions里面移除，因为一个prediction只能匹配一个ground truth
+            # match successfully, remove this prediction from predictions,
+            # because one prediction can only match one ground truth
             predictions_copy.pop(best_pred_index)
         else:
             FN += 1
 
     # Any remaining predictions are FP
-    # 这些都不是人脸
+    # these are not faces
     FP = len(predictions_copy)
 
     # Calculate TPR (true positive rate)
@@ -144,7 +159,6 @@ def evaluate_predictions(predictions, ground_truths, iou_threshold=0.2):
     return TPR, F1
 
 
-# ************ NEED MODIFICATION ************
 def readGroundtruth(filename='groundtruth.txt'):
     groundtruth = {}
     # read bounding boxes as ground truth
@@ -167,6 +181,11 @@ def readGroundtruth(filename='groundtruth.txt'):
 
     return groundtruth
 
+
+start_time = time.time()
+if os.path.exists("task1output/evaluation_results.txt"):
+    # If it does, delete the file
+    os.remove("task1output/evaluation_results.txt")
 
 for imageName in args.names:
     # Check if the image and cascade files are present
@@ -192,6 +211,10 @@ for imageName in args.names:
 
     cv2.imwrite(output_path, frame)
     print('Image saved:', output_path)
+
+with open("task1output/evaluation_results.txt", 'a') as file:
+    averageF1 = totalF1 / len(args.names)
+    file.write(f"AvgF1: {averageF1}\n")
 
 
 

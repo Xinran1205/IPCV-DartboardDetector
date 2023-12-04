@@ -1,58 +1,66 @@
 import cv2
 import numpy as np
 
-def hough_line_transform(image):
-    # Define the Hough space
-    # np.arange(-90, 90)：这个函数调用生成了一个数组，包含从-90到89的整数。
-    # np.deg2rad()：这个函数调用将角度转换为弧度。
+# this class is just a draft to try to implement hough_line_transform before task3
+# In task3 I write the new function hough_line_transform
 
-    # 所以thetas是一个数组，包含了从-90度到89度的弧度值。thetas[0]是-90度的弧度值及-1.57
+def hough_line_transform(image):
+
+    # Therefore, thetas is an array containing the radian values from -90 degrees to 89 degrees.
+    # thetas[0] is the radian value of -90 degrees and -1.57
     thetas = np.deg2rad(np.arange(-90, 90))
     width, height = image.shape
-    # 计算对角线的长度
+    # calculate the length of the diagonal
     diag_len = int(np.ceil(np.sqrt(width * width + height * height)))  # Max possible rho value
-    # 这个函数调用生成了一个数组，包含了从-diag_len到diag_len的2*diag_len个数。
-    # 和前面的thetas差不多，rhos[0]是-diag_len的值。
+    # this function call generates an array containing 2*diag_len numbers from -diag_len to diag_len
+    # same as thetas, rhos[0] is the value of -diag_len
     rhos = np.linspace(-diag_len, diag_len, 2 * diag_len)
 
     # Cache some reusable values
-    # cos_arr,一个数组，包含了thetas中每个角度的余弦值。
+    # cos_arr, an array containing the cosine values of each angle in thetas.
     cos_arr = np.cos(thetas)
     sin_arr = np.sin(thetas)
     num_thetas = len(thetas)
 
     # Initialize the accumulator space to zeros
-    # 生成一个2*diag_len行，num_thetas列的数组，每个元素都是0。用来存放每一对参数的票数
+    # generate an array with 2*diag_len rows and num_thetas columns, each element is 0.
+    # used to store the votes of each pair of parameters
     accumulator = np.zeros((2 * diag_len, num_thetas), dtype=np.uint64)
 
     # Find edge points (pixels with value 1)
-    # 这一步很好，可以直接找到图像中所有的边缘点，然后把这些点的坐标存放在x_idxs和y_idxs中。
-    # 省去遍历所有像素点的时间。
+    # this step is very good, it can directly find all the edge points in the image,
+    # and then store the coordinates of these points in x_idxs and y_idxs.
+    # save the time of traversing all pixels.
     y_idxs, x_idxs = np.nonzero(image)
-    # x_idxs和y_idxs长度相同，他们是一对一对的，每一对代表一个边缘点的坐标。
+    # x_idxs and y_idxs are of the same length, they are one-to-one pairs, each pair represents the coordinates of an edge point.
     # Loop through edge points and populate the accumulator
     for i in range(len(x_idxs)):
         x = x_idxs[i]
         y = y_idxs[i]
 
         for t_idx in range(num_thetas):
-            # 为什么要加diag_len：在霍夫变换中，ρ可以是负值或正值，表示直线到图像原点的有向距离。为了能在数组中使用这个值作为索引，
-            # 我们需要将其偏移一个diag_len的长度，确保索引是正数。这是因为数组的索引不能是负数。
-            # 因此，计算得到的ρ值加上diag_len后，就变成了一个非负整数，可以用作累加器数组accumulator的索引。
-            # 这里很巧妙，比如diag_len是-120，那rhos里面有240个数，索引0-239，每个数rho取值是-120到120，那么我给rho加上120后，
-            # rho的取值就变成了0到240，正好对应索引0-240。
+            # In the Hough transform, ρ can be negative or positive,
+            # representing the directed distance from the line to the image origin.
+            # In order to use this value as an index in the array,
+            # we need to offset it by a length of diag_len to ensure that the index is positive.
+            # This is because the index of the array cannot be negative.
+            # Therefore, the calculated ρ value plus diag_len becomes a non-negative integer,
+            # which can be used as an index of the accumulator array accumulator.
+            # This is very clever. For example, if diag_len is -120, then there are 240 numbers in rhos,
+            # indexes 0-239, and each number rho takes a value of -120 to 120.
+            # Then I add 120 to rho, and the value of rho becomes 0 to 240, which corresponds to indexes 0-240.
             rho = int(round(x * cos_arr[t_idx] + y * sin_arr[t_idx]) + diag_len)
 
-            # 注意accumulator中的rho和t_idx都只是索引（正的），不是真正的rho和t_idx值。
+            # be careful, the rho and t_idx in accumulator are just indexes, not the real rho and t_idx values.
             accumulator[rho, t_idx] += 1
 
     return accumulator, thetas, rhos
 
 
 def draw_lines(image, accumulator, thetas, rhos, threshold):
-    # np.where函数找出累加器中所有值大于给定阈值threshold的元素的索引。
-    # idxs是一个元组，包含了两个数组，第一个数组是行索引，第二个数组是列索引。
-    # idxs[0][]包含了所有的rho，idxs[1][]包含了所有的theta。
+    # np.where function finds the indexes of all elements in the accumulator that are greater than the given threshold.
+    # idxs is a tuple containing two arrays, the first array is the row index, and the second array is the column index.
+    # idxs[0][] contains all rho, idxs[1][] contains all theta.
     idxs = np.where(accumulator > threshold)
     for i in range(len(idxs[0])):
         rho = rhos[idxs[0][i]]
