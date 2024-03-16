@@ -4,9 +4,11 @@
 **/.idea/
 **/out/
 **/.vscode/
-**/Dartboard
-**/Dartboardcascade
 **/negatives
+**/task1output
+**/task2output
+**/Dartboard
+
 
 # Compiled Object files
 *.slo

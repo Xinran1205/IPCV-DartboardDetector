@@ -16,6 +16,10 @@ import time
 # LOADING THE IMAGE
 # Example usage: python filter2d.py -n car1.png
 
+# runing example : python task1.py -names Dartboard/dart0.jpg
+# default running all the images in the Dartboard folder
+
+
 totalF1 = 0
 
 parser = argparse.ArgumentParser(description='dart detection')

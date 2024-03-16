@@ -6,6 +6,8 @@ import argparse
 import copy
 import time
 
+# runing example : python task3.py -names Dartboard/dart0.jpg
+# default running all the images in the Dartboard folder
 totalF1 = 0
 
 

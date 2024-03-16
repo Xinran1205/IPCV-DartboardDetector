@@ -6,6 +6,11 @@ import argparse
 import copy
 import time
 
+# runing example : python task2.py -names Dartboard/dart0.jpg
+# default running all the images in the Dartboard folder
+
+
+
 # global variable for calculating the sum of the F1 score
 totalF1 = 0
 
