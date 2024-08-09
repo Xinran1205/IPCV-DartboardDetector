@@ -30,4 +30,6 @@
 4. **匹配过滤和全局过滤**：在每个Viola-Jones检测框中最多只保留一个最匹配的圆。最后，我还对全局所有圆形进行再次过滤，根据相似性（IOU计算）去除较小或较相似的圆，优先保留较大的圆，有效避免了大圆套小圆的情况。
 
 ### 检测器检测结果示例
-<img src="/pic/1.jpg" alt="sample" width="250" height="160">
+<img src="/pic/1.png" alt="sample" width="250" height="180">
+<img src="/pic/2.png" alt="sample" width="250" height="180">
+

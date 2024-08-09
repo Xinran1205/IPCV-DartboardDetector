@@ -33,4 +33,5 @@ This project develops a system using computer vision technology to detect dartbo
 4. **Matching Filtering and Global Filtering**: In each Viola-Jones detection box, I retain only the most matching circle. Finally, I filter all circles globally again, removing smaller or similar circles based on similarity (IoU calculation), prioritizing larger circles, effectively preventing the situation where a large circle encompasses a smaller one.
 
 ### Detector Detection Results Example
-<img src="/pic/1.jpg" alt="sample" width="250" height="160">
+<img src="/pic/1.png" alt="sample" width="250" height="180">
+<img src="/pic/2.png" alt="sample" width="250" height="180">
